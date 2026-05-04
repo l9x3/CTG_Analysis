@@ -135,8 +135,19 @@ def load_labels(csv_path):
             for _, r in df.iterrows() if pd.notna(r[fc])}
 
 def load_ctg_dataset(csv_path, label_col, exclude_cols=None):
-    """Load CTG dataset and return (X, y, feature_cols) with label columns excluded."""
+    """Load CTG dataset.
+
+    Args:
+        csv_path: Path to the CTG CSV file.
+        label_col: Column name to use as the output label.
+        exclude_cols: Optional iterable of additional label-like columns to exclude.
+
+    Returns:
+        Tuple of (X, y, feature_cols) where X is the feature matrix, y is the
+        label array, and feature_cols is the list of feature column names.
+    """
     df = pd.read_csv(csv_path)
+    # Strip BOM if present (common in CSVs saved with UTF-8 BOM).
     df.columns = [c.strip().lower().replace("\ufeff", "") for c in df.columns]
     if label_col not in df.columns:
         raise ValueError(f"Missing label column '{label_col}' in {csv_path}")
