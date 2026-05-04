@@ -88,7 +88,7 @@ DP_SIGMA        = 0.3        # Gaussian noise σ for DP (default, ε≈10)
 DP_EPS_H        = 1.0        # Laplace ε for histogram privatisation
 DP_EPSILONS     = [0.5, 1.0, 2.0, 5.0, 10.0, 50.0, 100.0]
 DIRICHLET_ALPHAS= [0.1, 0.3, 0.5, 1.0, 2.0, 5.0, 10.0]
-CTG_LABEL_COL   = "nsp"      # normalized label column in CTG_Dataset.csv
+CTG_LABEL_COL   = "nsp"      # label column name in CTG_Dataset.csv (after normalization)
 CTG_EXCLUDE_COLS= ("class",) # alternate label column to exclude from features
 MIN_SAMPLES_PER_CLIENT = 5
 SR              = 2000
@@ -800,14 +800,14 @@ def main():
         X_all, y_all = X_all[order], y_all[order]
         X_all = standardize_features(X_all)
         max_clients = max(1, len(X_all) // MIN_SAMPLES_PER_CLIENT)
-        n_clients = min(N_CLIENTS, len(X_all), max_clients)
+        n_clients = min(N_CLIENTS, max_clients)
         if n_clients < N_CLIENTS:
             print(f"Note: reducing clients from {N_CLIENTS} to {n_clients} to match sample count.")
         splits = np.array_split(np.arange(len(X_all)), n_clients)
         client_data = [(X_all[idx], y_all[idx]) for idx in splits]
         print(f"Using CTG_Dataset.csv (label={CTG_LABEL_COL.upper()}).")
         print(f"Samples: {len(X_all)}  |  Features: {len(feature_cols)}  |  Clients: {len(client_data)}")
-        print(f"NSP: {y_all.min():.0f}–{y_all.max():.0f}  mean={y_all.mean():.2f}\n")
+        print(f"{CTG_LABEL_COL.upper()}: {y_all.min():.0f}–{y_all.max():.0f}  mean={y_all.mean():.2f}\n")
     else:
         n_clients = N_CLIENTS
         csv_path = os.path.join(DATA_DIR, "Records.csv")
