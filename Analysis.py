@@ -88,6 +88,9 @@ DP_SIGMA        = 0.3        # Gaussian noise σ for DP (default, ε≈10)
 DP_EPS_H        = 1.0        # Laplace ε for histogram privatisation
 DP_EPSILONS     = [0.5, 1.0, 2.0, 5.0, 10.0, 50.0, 100.0]
 DIRICHLET_ALPHAS= [0.1, 0.3, 0.5, 1.0, 2.0, 5.0, 10.0]
+CTG_LABEL_COL   = "nsp"      # normalized label column in CTG_Dataset.csv
+CTG_EXCLUDE_COLS= ("class",) # alternate label column to exclude from features
+MIN_SAMPLES_PER_CLIENT = 5
 SR              = 2000
 SEGMENT_S       = 10
 OVERLAP         = 0.5
@@ -167,6 +170,7 @@ def load_ctg_dataset(csv_path, label_col, exclude_cols=None):
     return X[mask], y[mask], feature_cols
 
 def standardize_features(X):
+    """Median-impute NaNs and standardize features."""
     col_med = np.nanmedian(X, 0)
     for j in range(X.shape[1]):
         X[np.isnan(X[:, j]), j] = col_med[j]
@@ -787,20 +791,21 @@ def main():
     if use_ctg:
         X_all, y_all, feature_cols = load_ctg_dataset(
             ctg_path,
-            label_col="nsp",
-            exclude_cols=("class",),
+            label_col=CTG_LABEL_COL,
+            exclude_cols=CTG_EXCLUDE_COLS,
         )
         if len(X_all) == 0:
             raise ValueError("CTG_Dataset.csv has no usable rows after filtering.")
         order = rng.permutation(len(X_all))
         X_all, y_all = X_all[order], y_all[order]
         X_all = standardize_features(X_all)
-        n_clients = min(N_CLIENTS, len(X_all))
+        max_clients = max(1, len(X_all) // MIN_SAMPLES_PER_CLIENT)
+        n_clients = min(N_CLIENTS, len(X_all), max_clients)
         if n_clients < N_CLIENTS:
             print(f"Note: reducing clients from {N_CLIENTS} to {n_clients} to match sample count.")
         splits = np.array_split(np.arange(len(X_all)), n_clients)
         client_data = [(X_all[idx], y_all[idx]) for idx in splits]
-        print(f"Using CTG_Dataset.csv (label=NSP).")
+        print(f"Using CTG_Dataset.csv (label={CTG_LABEL_COL.upper()}).")
         print(f"Samples: {len(X_all)}  |  Features: {len(feature_cols)}  |  Clients: {len(client_data)}")
         print(f"NSP: {y_all.min():.0f}–{y_all.max():.0f}  mean={y_all.mean():.2f}\n")
     else:
