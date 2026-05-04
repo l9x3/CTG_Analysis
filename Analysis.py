@@ -134,13 +134,17 @@ def load_labels(csv_path):
     return {f"subject_{int(r[sc]):02d}": float(r[fc])
             for _, r in df.iterrows() if pd.notna(r[fc])}
 
-def load_ctg_dataset(csv_path, label_col="nsp"):
+def load_ctg_dataset(csv_path, label_col, exclude_cols=None):
+    """Load CTG dataset and return (X, y, feature_cols) with label columns excluded."""
     df = pd.read_csv(csv_path)
     df.columns = [c.strip().lower().replace("\ufeff", "") for c in df.columns]
     if label_col not in df.columns:
         raise ValueError(f"Missing label column '{label_col}' in {csv_path}")
     y = pd.to_numeric(df[label_col], errors="coerce").to_numpy(np.float32)
-    feature_cols = [c for c in df.columns if c not in {label_col, "class"}]
+    exclude = {label_col}
+    if exclude_cols:
+        exclude.update(c.lower() for c in exclude_cols)
+    feature_cols = [c for c in df.columns if c not in exclude]
     X = df[feature_cols].apply(pd.to_numeric, errors="coerce").to_numpy(np.float32)
     mask = ~np.isnan(y)
     return X[mask], y[mask], feature_cols
@@ -757,7 +761,11 @@ def main():
     use_ctg = os.path.exists(ctg_path)
     rng = np.random.default_rng(42)
     if use_ctg:
-        X_all, y_all, feature_cols = load_ctg_dataset(ctg_path, label_col="nsp")
+        X_all, y_all, feature_cols = load_ctg_dataset(
+            ctg_path,
+            label_col="nsp",
+            exclude_cols=("class",),
+        )
         if len(X_all) == 0:
             raise ValueError("CTG_Dataset.csv has no usable rows after filtering.")
         order = rng.permutation(len(X_all))
@@ -768,6 +776,8 @@ def main():
         scaler = StandardScaler()
         X_all = scaler.fit_transform(X_all)
         n_clients = min(N_CLIENTS, len(X_all))
+        if n_clients < N_CLIENTS:
+            print(f"Note: reducing clients from {N_CLIENTS} to {n_clients} to match sample count.")
         splits = np.array_split(np.arange(len(X_all)), n_clients)
         client_data = [(X_all[idx], y_all[idx]) for idx in splits]
         print(f"Using CTG_Dataset.csv (label=NSP).")
