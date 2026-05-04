@@ -125,9 +125,13 @@ def extract_features(seg, fs=SR):
           librosa.feature.rms(y=seg).mean()]
     return np.array(f, dtype=np.float32)
 
+def normalize_columns(columns):
+    """Normalize column names for consistent matching."""
+    return [c.strip().lower().replace("\ufeff", "").replace(" ", "_") for c in columns]
+
 def load_labels(csv_path):
     df = pd.read_csv(csv_path)
-    df.columns = [c.strip().lower().replace(" ","_") for c in df.columns]
+    df.columns = normalize_columns(df.columns)
     sc = next((c for c in df.columns if "subject" in c or c=="id"), None)
     fc = next((c for c in df.columns if "fhr" in c or "heart_rate" in c or c=="hr"), None)
     if not sc or not fc: return {}
@@ -148,7 +152,7 @@ def load_ctg_dataset(csv_path, label_col, exclude_cols=None):
     """
     df = pd.read_csv(csv_path)
     # Normalize column names: trim whitespace, lower-case, and strip BOM if present.
-    df.columns = [c.strip().lower().replace("\ufeff", "") for c in df.columns]
+    df.columns = normalize_columns(df.columns)
     if label_col not in df.columns:
         raise ValueError(f"Missing label column '{label_col}' in {csv_path}")
     y = pd.to_numeric(df[label_col], errors="coerce").to_numpy(np.float32)
@@ -161,6 +165,13 @@ def load_ctg_dataset(csv_path, label_col, exclude_cols=None):
     X = df[feature_cols].apply(pd.to_numeric, errors="coerce").to_numpy(np.float32)
     mask = ~np.isnan(y)
     return X[mask], y[mask], feature_cols
+
+def standardize_features(X):
+    col_med = np.nanmedian(X, 0)
+    for j in range(X.shape[1]):
+        X[np.isnan(X[:, j]), j] = col_med[j]
+    scaler = StandardScaler()
+    return scaler.fit_transform(X)
 
 # ══════════════════════════════════════════════════════════════════════
 #  MLP (pure NumPy)  Architecture: D → 64 → 32 → 1
@@ -783,11 +794,7 @@ def main():
             raise ValueError("CTG_Dataset.csv has no usable rows after filtering.")
         order = rng.permutation(len(X_all))
         X_all, y_all = X_all[order], y_all[order]
-        col_med = np.nanmedian(X_all, 0)
-        for j in range(X_all.shape[1]):
-            X_all[np.isnan(X_all[:, j]), j] = col_med[j]
-        scaler = StandardScaler()
-        X_all = scaler.fit_transform(X_all)
+        X_all = standardize_features(X_all)
         n_clients = min(N_CLIENTS, len(X_all))
         if n_clients < N_CLIENTS:
             print(f"Note: reducing clients from {N_CLIENTS} to {n_clients} to match sample count.")
@@ -797,10 +804,11 @@ def main():
         print(f"Samples: {len(X_all)}  |  Features: {len(feature_cols)}  |  Clients: {len(client_data)}")
         print(f"NSP: {y_all.min():.0f}–{y_all.max():.0f}  mean={y_all.mean():.2f}\n")
     else:
+        n_clients = N_CLIENTS
         csv_path = os.path.join(DATA_DIR, "Records.csv")
         labels   = load_labels(csv_path) if os.path.exists(csv_path) else {}
         wav_paths = sorted([os.path.join(DATA_DIR, f"subject_{i:02d}.wav")
-                            for i in range(1, N_CLIENTS+1)
+                            for i in range(1, n_clients+1)
                             if os.path.exists(os.path.join(DATA_DIR, f"subject_{i:02d}.wav"))])
 
         use_real = bool(wav_paths)
@@ -824,7 +832,7 @@ def main():
             D = 36
         else:
             raw = []
-            for i in range(N_CLIENTS):
+            for i in range(n_clients):
                 fhr = rng.uniform(110, 165)
                 n   = int(rng.integers(20, 55))
                 X_c = rng.normal(0,1,(n,36)).astype(np.float32)
@@ -836,10 +844,7 @@ def main():
         # Global standardisation
         X_all = np.vstack([X for X,y in raw if len(X)>0])
         y_all = np.concatenate([y for X,y in raw if len(y)>0])
-        col_med = np.nanmedian(X_all,0)
-        for j in range(X_all.shape[1]):
-            X_all[np.isnan(X_all[:,j]),j] = col_med[j]
-        scaler = StandardScaler(); X_all = scaler.fit_transform(X_all)
+        X_all = standardize_features(X_all)
         ptr=0; client_data=[]
         for X_c,y_c in raw:
             n=len(X_c)
