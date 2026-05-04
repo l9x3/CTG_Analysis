@@ -147,11 +147,13 @@ def load_ctg_dataset(csv_path, label_col, exclude_cols=None):
         label array, and feature_cols is the list of feature column names.
     """
     df = pd.read_csv(csv_path)
-    # Strip BOM if present (common in CSVs saved with UTF-8 BOM).
+    # Normalize column names: trim whitespace, lower-case, and strip BOM if present.
     df.columns = [c.strip().lower().replace("\ufeff", "") for c in df.columns]
     if label_col not in df.columns:
         raise ValueError(f"Missing label column '{label_col}' in {csv_path}")
     y = pd.to_numeric(df[label_col], errors="coerce").to_numpy(np.float32)
+    if np.all(np.isnan(y)):
+        raise ValueError(f"All '{label_col}' values are NaN in {csv_path}")
     exclude = {label_col}
     if exclude_cols:
         exclude.update(c.lower() for c in exclude_cols)
