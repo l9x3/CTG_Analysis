@@ -1,4 +1,3 @@
-```
 """
 =================================================================
 Federated Learning — Fetal Heart Rate (FHR) Estimation
@@ -134,6 +133,17 @@ def load_labels(csv_path):
     if not sc or not fc: return {}
     return {f"subject_{int(r[sc]):02d}": float(r[fc])
             for _, r in df.iterrows() if pd.notna(r[fc])}
+
+def load_ctg_dataset(csv_path, label_col="nsp"):
+    df = pd.read_csv(csv_path)
+    df.columns = [c.strip().lower().replace("\ufeff", "") for c in df.columns]
+    if label_col not in df.columns:
+        raise ValueError(f"Missing label column '{label_col}' in {csv_path}")
+    y = pd.to_numeric(df[label_col], errors="coerce").to_numpy(np.float32)
+    feature_cols = [c for c in df.columns if c not in {label_col, "class"}]
+    X = df[feature_cols].apply(pd.to_numeric, errors="coerce").to_numpy(np.float32)
+    mask = ~np.isnan(y)
+    return X[mask], y[mask], feature_cols
 
 # ══════════════════════════════════════════════════════════════════════
 #  MLP (pure NumPy)  Architecture: D → 64 → 32 → 1
@@ -743,58 +753,79 @@ def main():
     print("="*65)
 
     # ── 1. Build client data ─────────────────────────────────────────
-    csv_path = os.path.join(DATA_DIR, "Records.csv")
-    labels   = load_labels(csv_path) if os.path.exists(csv_path) else {}
-    wav_paths = sorted([os.path.join(DATA_DIR, f"subject_{i:02d}.wav")
-                        for i in range(1, N_CLIENTS+1)
-                        if os.path.exists(os.path.join(DATA_DIR, f"subject_{i:02d}.wav"))])
-
-    use_real = bool(wav_paths)
-    if not use_real:
-        print("\n⚠  Data not found — using synthetic demo data.\n"
-              "   Run fhr_pipeline.py first to download IIScFHSDB.\n")
-
+    ctg_path = os.path.join(os.path.dirname(__file__), "CTG_Dataset.csv")
+    use_ctg = os.path.exists(ctg_path)
     rng = np.random.default_rng(42)
-    if use_real:
-        raw = []
-        for wp in wav_paths:
-            sid = os.path.basename(wp).replace(".wav","")
-            y_c, fs = librosa.load(wp, sr=SR, mono=True)
-            y_c = bandpass(y_c); y_c /= (np.abs(y_c).max()+1e-9)
-            seg_len = int(SEGMENT_S*SR); hop = int(seg_len*(1-OVERLAP))
-            segs = [y_c[s:s+seg_len] for s in range(0,len(y_c)-seg_len+1,hop)]
-            if not segs: raw.append((np.empty((0,36)), np.array([]))); continue
-            X_c = np.vstack([extract_features(s) for s in segs])
-            fhr = labels.get(sid, autocorr_fhr(y_c[:SR*30]))
-            y_c_arr = np.full(len(X_c), fhr if not np.isnan(fhr) else 135., np.float32)
-            raw.append((X_c, y_c_arr))
-        D = 36
+    if use_ctg:
+        X_all, y_all, feature_cols = load_ctg_dataset(ctg_path, label_col="nsp")
+        if len(X_all) == 0:
+            raise ValueError("CTG_Dataset.csv has no usable rows after filtering.")
+        order = rng.permutation(len(X_all))
+        X_all, y_all = X_all[order], y_all[order]
+        col_med = np.nanmedian(X_all, 0)
+        for j in range(X_all.shape[1]):
+            X_all[np.isnan(X_all[:, j]), j] = col_med[j]
+        scaler = StandardScaler()
+        X_all = scaler.fit_transform(X_all)
+        n_clients = min(N_CLIENTS, len(X_all))
+        splits = np.array_split(np.arange(len(X_all)), n_clients)
+        client_data = [(X_all[idx], y_all[idx]) for idx in splits]
+        print(f"Using CTG_Dataset.csv (label=NSP).")
+        print(f"Samples: {len(X_all)}  |  Features: {len(feature_cols)}  |  Clients: {len(client_data)}")
+        print(f"NSP: {y_all.min():.0f}–{y_all.max():.0f}  mean={y_all.mean():.2f}\n")
     else:
-        raw = []
-        for i in range(N_CLIENTS):
-            fhr = rng.uniform(110, 165)
-            n   = int(rng.integers(20, 55))
-            X_c = rng.normal(0,1,(n,36)).astype(np.float32)
-            X_c[:,0] = fhr + rng.normal(0,8,n)
-            y_c = (np.full(n,fhr) + rng.normal(0,5,n)).astype(np.float32)
-            raw.append((X_c, y_c))
-        D = 36
+        csv_path = os.path.join(DATA_DIR, "Records.csv")
+        labels   = load_labels(csv_path) if os.path.exists(csv_path) else {}
+        wav_paths = sorted([os.path.join(DATA_DIR, f"subject_{i:02d}.wav")
+                            for i in range(1, N_CLIENTS+1)
+                            if os.path.exists(os.path.join(DATA_DIR, f"subject_{i:02d}.wav"))])
 
-    # Global standardisation
-    X_all = np.vstack([X for X,y in raw if len(X)>0])
-    y_all = np.concatenate([y for X,y in raw if len(y)>0])
-    col_med = np.nanmedian(X_all,0)
-    for j in range(X_all.shape[1]):
-        X_all[np.isnan(X_all[:,j]),j] = col_med[j]
-    scaler = StandardScaler(); X_all = scaler.fit_transform(X_all)
-    ptr=0; client_data=[]
-    for X_c,y_c in raw:
-        n=len(X_c)
-        if n==0: client_data.append((np.empty((0,D)),np.array([]))); continue
-        client_data.append((X_all[ptr:ptr+n], y_c)); ptr+=n
+        use_real = bool(wav_paths)
+        if not use_real:
+            print("\n⚠  Data not found — using synthetic demo data.\n"
+                  "   Run fhr_pipeline.py first to download IIScFHSDB.\n")
 
-    print(f"Clients: {len(client_data)}  |  Segments: {len(X_all)}")
-    print(f"FHR: {y_all.min():.1f}–{y_all.max():.1f} bpm  mean={y_all.mean():.1f}\n")
+        if use_real:
+            raw = []
+            for wp in wav_paths:
+                sid = os.path.basename(wp).replace(".wav","")
+                y_c, fs = librosa.load(wp, sr=SR, mono=True)
+                y_c = bandpass(y_c); y_c /= (np.abs(y_c).max()+1e-9)
+                seg_len = int(SEGMENT_S*SR); hop = int(seg_len*(1-OVERLAP))
+                segs = [y_c[s:s+seg_len] for s in range(0,len(y_c)-seg_len+1,hop)]
+                if not segs: raw.append((np.empty((0,36)), np.array([]))); continue
+                X_c = np.vstack([extract_features(s) for s in segs])
+                fhr = labels.get(sid, autocorr_fhr(y_c[:SR*30]))
+                y_c_arr = np.full(len(X_c), fhr if not np.isnan(fhr) else 135., np.float32)
+                raw.append((X_c, y_c_arr))
+            D = 36
+        else:
+            raw = []
+            for i in range(N_CLIENTS):
+                fhr = rng.uniform(110, 165)
+                n   = int(rng.integers(20, 55))
+                X_c = rng.normal(0,1,(n,36)).astype(np.float32)
+                X_c[:,0] = fhr + rng.normal(0,8,n)
+                y_c = (np.full(n,fhr) + rng.normal(0,5,n)).astype(np.float32)
+                raw.append((X_c, y_c))
+            D = 36
+
+        # Global standardisation
+        X_all = np.vstack([X for X,y in raw if len(X)>0])
+        y_all = np.concatenate([y for X,y in raw if len(y)>0])
+        col_med = np.nanmedian(X_all,0)
+        for j in range(X_all.shape[1]):
+            X_all[np.isnan(X_all[:,j]),j] = col_med[j]
+        scaler = StandardScaler(); X_all = scaler.fit_transform(X_all)
+        ptr=0; client_data=[]
+        for X_c,y_c in raw:
+            n=len(X_c)
+            if n==0: client_data.append((np.empty((0,D)),np.array([]))); continue
+            client_data.append((X_all[ptr:ptr+n], y_c)); ptr+=n
+        n_clients = len(client_data)
+
+        print(f"Clients: {len(client_data)}  |  Segments: {len(X_all)}")
+        print(f"FHR: {y_all.min():.1f}–{y_all.max():.1f} bpm  mean={y_all.mean():.1f}\n")
 
     # ── 2. Run algorithms ────────────────────────────────────────────
     results = {}
@@ -853,7 +884,7 @@ def main():
     ni_rows = []
     for alpha in DIRICHLET_ALPHAS:
         print(f"  α={alpha}")
-        part = dirichlet_partition(X_all, y_all, N_CLIENTS, alpha)
+        part = dirichlet_partition(X_all, y_all, n_clients, alpha)
         row  = {"alpha": alpha}
         for name, fn in [("FedAvg",fedavg),("FedProx",fedprox),
                          ("SCAFFOLD",scaffold),("FedNova",fednova),
@@ -878,4 +909,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
