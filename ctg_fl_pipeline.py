@@ -612,8 +612,7 @@ def main():
     print("="*65)
 
     # ── Load & scale data ─────────────────────────────────
-    print("
-[1/7] Loading CTG dataset …")
+    print("\n[1/7] Loading CTG dataset …")
     X_raw, y_raw = load_ctg()
     scaler = StandardScaler()
     X_sc   = scaler.fit_transform(X_raw).astype(np.float32)
@@ -625,14 +624,12 @@ def main():
 
     # ── IID partition for main experiments ────────────────
     client_data = iid_partition(X_sc, y_raw, N_CLIENTS)
-    print(f"
-  Clients: {N_CLIENTS} | Avg samples/client: "
+    print(f"\n  Clients: {N_CLIENTS} | Avg samples/client: "
           f"{len(y_raw)//N_CLIENTS}")
 
     # ── Run algorithms ────────────────────────────────────
     results = {}
-    print("
-[2/7] FedAvg …");          results["FedAvg"]       = fedavg(client_data)
+    print("\n[2/7] FedAvg …");          results["FedAvg"]       = fedavg(client_data)
     print("[3/7] FedProx …");          results["FedProx"]      = fedprox(client_data)
     print("[4/7] SCAFFOLD …");         results["SCAFFOLD"]     = scaffold(client_data)
     print("[5/7] FedNova …");          results["FedNova"]      = fednova(client_data)
