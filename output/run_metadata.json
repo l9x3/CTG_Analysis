@@ -1,0 +1,8 @@
+{
+  "input_path": "/home/runner/work/CTG_Analysis/CTG_Analysis/CTG_Dataset.csv",
+  "rows": 2126,
+  "columns": 42,
+  "output_dir": "/home/runner/work/CTG_Analysis/CTG_Analysis/output",
+  "plots_dir": "/home/runner/work/CTG_Analysis/CTG_Analysis/output/plots",
+  "generated_at": "2026-05-05T06:19:14.232417+00:00"
+}
