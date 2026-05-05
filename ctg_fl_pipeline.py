@@ -331,7 +331,7 @@ def scaffold(client_data, n_rounds=N_ROUNDS, E=E, lr=ETA,
 
         avg_delta = {key: np.mean([d[key] for d in deltas], 0) for key in gw}
         gw = dict_add(gw, avg_delta, lr_g)
-        avg_dc = {key: np.mean([d[key] for d in dc_list], 0) for d in gw}
+        avg_dc = {key: np.mean([d[key] for d in dc_list], 0) for key in gw}
         c  = dict_add(c, avg_dc, len(S)/N)
         gm.set_weights(gw)
         curve.append(global_acc(gm, client_data))
