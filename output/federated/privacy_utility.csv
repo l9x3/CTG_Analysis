@@ -1,0 +1,10 @@
+model,privacy_budget,noniid_level,final_round,final_accuracy,final_loss
+FedProx,2.0,0.1,40,0.77478,0.32659
+FedAvg,0.5,0.1,40,0.60636,0.55281
+FedNova,2.0,0.1,40,0.80989,0.26473
+FedProx,1.0,0.1,40,0.6774,0.44473
+FedProx,0.5,0.1,40,0.63781,0.4918
+FedNova,0.5,0.1,40,0.66492,0.47789
+FedAvg,2.0,0.1,40,0.74741,0.35368
+FedNova,1.0,0.1,40,0.71094,0.39919
+FedAvg,1.0,0.1,40,0.6461,0.49366

@@ -1,0 +1,22 @@
+{
+  "models": [
+    "FedAvg",
+    "FedProx",
+    "FedNova"
+  ],
+  "rounds": 40,
+  "clients": 12,
+  "privacy_budgets": [
+    0.5,
+    1.0,
+    2.0
+  ],
+  "noniid_levels": [
+    0.1,
+    0.3,
+    0.5
+  ],
+  "seed": 7,
+  "output_dir": "/home/runner/work/CTG_Analysis/CTG_Analysis/output/federated",
+  "generated_at": "2026-05-05T08:46:13.488990+00:00"
+}
