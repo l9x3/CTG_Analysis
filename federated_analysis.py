@@ -26,6 +26,14 @@ DEFAULT_FEDERATED_DIR = "federated"
 DEFAULT_MODELS = "FedAvg,FedProx,FedNova"
 DEFAULT_PRIVACY_BUDGETS = "0.5,1.0,2.0"
 DEFAULT_NONIID_LEVELS = "0.1,0.3,0.5"
+DEFAULT_ROUNDS = 50
+DEFAULT_CLIENTS = 10
+DEFAULT_SEED = 7
+ACCURACY_NOISE_STD = 0.006
+LOSS_NOISE_STD = 0.01
+CLIENT_SEED_OFFSET = 31
+BASE_CLIENT_VARIANCE = 0.015
+NONIID_VARIANCE_FACTOR = 0.06
 
 
 @dataclass(frozen=True)
@@ -51,13 +59,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rounds",
         type=int,
-        default=50,
+        default=DEFAULT_ROUNDS,
         help="Number of federated rounds to simulate (default: 50).",
     )
     parser.add_argument(
         "--clients",
         type=int,
-        default=10,
+        default=DEFAULT_CLIENTS,
         help="Number of clients to simulate for boxplots (default: 10).",
     )
     parser.add_argument(
@@ -73,7 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--seed",
         type=int,
-        default=7,
+        default=DEFAULT_SEED,
         help="Random seed for deterministic output (default: 7).",
     )
     parser.add_argument(
@@ -162,10 +170,12 @@ def simulate_convergence(config: FederatedConfig) -> pd.DataFrame:
                 target = clamp(target, 0.4, 0.98)
                 for round_id in range(1, config.rounds + 1):
                     progress = 1 - math.exp(-round_id / decay)
-                    accuracy = start + (target - start) * progress + rng.gauss(0, 0.006)
+                    accuracy = start + (target - start) * progress + rng.gauss(
+                        0, ACCURACY_NOISE_STD
+                    )
                     accuracy = clamp(accuracy, 0.3, 0.995)
                     loss = (1 - accuracy) * 1.4 + 0.06 * (1 - progress)
-                    loss += rng.gauss(0, 0.01)
+                    loss += rng.gauss(0, LOSS_NOISE_STD)
                     loss = max(0.03, loss)
                     rows.append(
                         {
@@ -245,7 +255,7 @@ def build_noniid_sensitivity(
 def build_client_distribution(
     curve_df: pd.DataFrame, config: FederatedConfig
 ) -> pd.DataFrame:
-    rng = random.Random(config.seed + 31)
+    rng = random.Random(config.seed + CLIENT_SEED_OFFSET)
     final_rows = (
         curve_df.sort_values("round")
         .groupby(["model", "privacy_budget", "noniid_level"], sort=False)
@@ -256,7 +266,7 @@ def build_client_distribution(
         base_accuracy = float(row["accuracy"])
         base_loss = float(row["loss"])
         noniid_level = float(row["noniid_level"])
-        variance = 0.015 + noniid_level * 0.06
+        variance = BASE_CLIENT_VARIANCE + noniid_level * NONIID_VARIANCE_FACTOR
         for client_id in range(1, config.clients + 1):
             accuracy = base_accuracy + rng.gauss(0, variance)
             accuracy = clamp(accuracy, 0.25, 0.995)
