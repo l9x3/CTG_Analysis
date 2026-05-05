@@ -1,0 +1,7 @@
+Method,Round@90% (Acc↑),Conv. Round,Acc@50,Final Acc
+FedAvg,38,17,0.9102,0.9219
+FedProx,38,17,0.9106,0.9219
+SCAFFOLD,41,17,0.9125,0.9238
+FedNova,29,22,0.8848,0.8932
+FedCrit-HEA,53,80,0.8086,0.8669
+Centralised,48,8,0.9299,0.9389
